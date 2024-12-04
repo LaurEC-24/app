@@ -12,6 +12,9 @@ services:
       - /opt/appelcen/secrets:/app/secrets
     environment:
       - TZ=Europe/Bucharest
-    env_file:
-      - ./secrets/db.env
+      - DB_HOST=10.10.8.12
+      - DB_PORT=1433
+      - DB_NAME=Interventii
+      - DB_USER=Laur
+      - DB_PASSWORD=Hh1236996321
     restart: unless-stopped
