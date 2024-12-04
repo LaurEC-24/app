@@ -2,15 +2,10 @@ version: '3.8'
 
 services:
   appelcen:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     ports:
       - "8501:8501"
-    volumes:
-      - ./logs:/app/logs
     environment:
-      - TZ=Europe/Bucharest
       - DB_HOST=10.10.8.12
       - DB_PORT=1433
       - DB_NAME=Interventii
@@ -18,4 +13,6 @@ services:
       - DB_PASSWORD=Hh1236996321
       - STREAMLIT_SERVER_ADDRESS=0.0.0.0
       - STREAMLIT_SERVER_PORT=8501
+    volumes:
+      - ./logs:/app/logs
     restart: unless-stopped
