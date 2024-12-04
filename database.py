@@ -91,34 +91,33 @@ def normalize_username(username):
 
 def verify_credentials(username, password):
     """Verifică credențialele utilizatorului în baza de date."""
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
-            return {'success': False, 'message': 'Eroare la conectarea la baza de date'}
-        
+            print("DEBUG: Nu s-a putut realiza conexiunea la baza de date")
+            return {'success': False, 'message': 'Nu s-a putut realiza conexiunea la baza de date'}
+            
         cursor = conn.cursor()
-        
-        query = """
-            SELECT u.ID, u.NumeUtilizator, s.Nume as Serviciu
-            FROM Utilizatori u
-            JOIN Servicii s ON u.ServiciuID = s.ID
-            WHERE u.NumeUtilizator = ?
-            AND u.Parola = ?
-        """
-        
-        # Hash-uim parola și normalizăm username-ul
         hashed_password = hash_password(password)
-        normalized_username = normalize_username(username)
-        print(f"DEBUG: Trying login with normalized username: {normalized_username}")
         
+        # Normalizăm username-ul
+        normalized_username = normalize_username(username)
+        if not normalized_username:
+            return {'success': False, 'message': 'Utilizator negăsit'}
+
+        query = """
+        SELECT TOP 1 Id, Username, ServiciuId 
+        FROM Users 
+        WHERE Username = ? AND Password = ?
+        """
         cursor.execute(query, (normalized_username, hashed_password))
         result = cursor.fetchone()
-        
+
         if result:
-            print(f"DEBUG: Found user with ID {result[0]}, username {result[1]}, service {result[2]}")
             return {
                 'success': True,
-                'user_id': result[0],
                 'username': result[1],
                 'serviciu': result[2]
             }
@@ -128,10 +127,16 @@ def verify_credentials(username, password):
         print(f"DEBUG: Error during credential verification: {str(e)}")
         return {'success': False, 'message': f'Eroare de conectare: {str(e)}'}
     finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
+        if cursor:
+            try:
+                cursor.close()
+            except Exception as e:
+                print(f"DEBUG: Error closing cursor: {str(e)}")
+        if conn:
+            try:
+                conn.close()
+            except Exception as e:
+                print(f"DEBUG: Error closing connection: {str(e)}")
 
 def get_user_service(username):
     """Obține serviciul asociat unui utilizator."""
