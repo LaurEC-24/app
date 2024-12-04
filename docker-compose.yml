@@ -13,5 +13,5 @@ services:
     environment:
       - TZ=Europe/Bucharest
     env_file:
-      - /opt/appelcen/secrets/db.env
+      - ./secrets/db.env
     restart: unless-stopped
