@@ -14,29 +14,30 @@ def get_db_connection():
         # Căutăm config.ini în directorul curent pentru dezvoltare locală
         local_config = Path(__file__).parent / 'config.ini'
         
-        # Căutăm și în /app/secrets pentru Docker
-        docker_config = Path('/app/secrets/config.ini')
-        
         if local_config.exists():
             config.read(local_config)
-        elif docker_config.exists():
-            config.read(docker_config)
+            host = config['MySQL']['host']
+            port = config['MySQL']['port']
+            database = config['MySQL']['database']
+            user = config['MySQL']['user']
+            password = config['MySQL']['password']
         else:
-            raise Exception("Nu s-au găsit credențialele pentru baza de date")
+            # Folosim variabilele de mediu pentru Docker
+            host = os.getenv('DB_HOST')
+            port = os.getenv('DB_PORT')
+            database = os.getenv('DB_NAME')
+            user = os.getenv('DB_USER')
+            password = os.getenv('DB_PASSWORD')
 
-        section = 'MySQL'
-        required_keys = ['host', 'port', 'database', 'user', 'password']
-        
-        # Verificăm dacă toate cheile necesare există
-        if not all(key in config[section] for key in required_keys):
+        if not all([host, port, database, user, password]):
             raise Exception("Lipsesc configurări necesare pentru baza de date")
 
         conn_str = (
             "DRIVER={SQL Server};"
-            f"SERVER={config[section]['host']},{config[section]['port']};"
-            f"DATABASE={config[section]['database']};"
-            f"UID={config[section]['user']};"
-            f"PWD={config[section]['password']};"
+            f"SERVER={host},{port};"
+            f"DATABASE={database};"
+            f"UID={user};"
+            f"PWD={password};"
         )
         
         return pyodbc.connect(conn_str)
