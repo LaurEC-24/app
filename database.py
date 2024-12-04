@@ -97,16 +97,19 @@ def verify_credentials(username, password):
     conn = None
     cursor = None
     try:
+        # Încercăm să obținem o conexiune
         conn = get_db_connection()
-        if not conn:
+        if conn is None:
+            print("DEBUG: Nu s-a putut realiza conexiunea la baza de date")
             return {'success': False, 'message': 'Nu s-a putut realiza conexiunea la baza de date'}
-        
+
+        # Deschidem cursor și executăm query
         cursor = conn.cursor()
         hashed_password = hash_password(password)
-        
-        # Normalizăm username-ul
         normalized_username = normalize_username(username)
+        
         if not normalized_username:
+            print("DEBUG: Username invalid")
             return {'success': False, 'message': 'Utilizator negăsit'}
 
         query = """
@@ -114,30 +117,40 @@ def verify_credentials(username, password):
         FROM Users 
         WHERE Username = ? AND Password = ?
         """
+        
         cursor.execute(query, (normalized_username, hashed_password))
         result = cursor.fetchone()
 
         if result:
+            print(f"DEBUG: Autentificare reușită pentru {normalized_username}")
             return {
                 'success': True,
                 'username': result[1],
                 'serviciu': result[2]
             }
+        
+        print(f"DEBUG: Autentificare eșuată pentru {normalized_username}")
         return {'success': False, 'message': 'Credențiale invalide'}
+        
     except Exception as e:
-        print(f"DEBUG: Error during credential verification: {str(e)}")
-        return {'success': False, 'message': f'Eroare de conectare: {str(e)}'}
+        print(f"DEBUG: Eroare la verificarea credențialelor: {str(e)}")
+        return {'success': False, 'message': f'Eroare la autentificare: {str(e)}'}
+        
     finally:
-        if cursor:
+        # Închiderea în siguranță a resurselor
+        if cursor is not None:
             try:
                 cursor.close()
+                print("DEBUG: Cursor închis cu succes")
             except Exception as e:
-                print(f"DEBUG: Error closing cursor: {str(e)}")
-        if conn:
+                print(f"DEBUG: Eroare la închiderea cursorului: {str(e)}")
+        
+        if conn is not None:
             try:
                 conn.close()
+                print("DEBUG: Conexiune închisă cu succes")
             except Exception as e:
-                print(f"DEBUG: Error closing connection: {str(e)}")
+                print(f"DEBUG: Eroare la închiderea conexiunii: {str(e)}")
 
 def get_user_service(username):
     """Obține serviciul asociat unui utilizator."""
