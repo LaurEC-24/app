@@ -1,4 +1,5 @@
 streamlit==1.29.0
 pyodbc==4.0.39
-pandas
-configparser
+pandas==2.1.4
+configparser==6.0.0
+python-dotenv==1.0.0

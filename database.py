@@ -8,44 +8,20 @@ from pathlib import Path
 def get_db_connection():
     """Creează și returnează o conexiune la baza de date."""
     try:
-        # Încercăm să citim credențialele în siguranță
         config = configparser.ConfigParser()
+        config_path = Path(__file__).parent / 'config.ini'
+        config.read(config_path)
         
-        # Căutăm config.ini în directorul curent pentru dezvoltare locală
-        local_config = Path(__file__).parent / 'config.ini'
-        
-        if local_config.exists():
-            config.read(local_config)
-            host = config['MySQL']['host']
-            port = config['MySQL']['port']
-            database = config['MySQL']['database']
-            user = config['MySQL']['user']
-            password = config['MySQL']['password']
-        else:
-            # Folosim variabilele de mediu pentru Docker
-            host = os.getenv('DB_HOST')
-            port = os.getenv('DB_PORT')
-            database = os.getenv('DB_NAME')
-            user = os.getenv('DB_USER')
-            password = os.getenv('DB_PASSWORD')
-
-        if not all([host, port, database, user, password]):
-            print("DEBUG: Lipsesc configurări necesare pentru baza de date")
-            return None
-
         conn_str = (
-            "DRIVER={ODBC Driver 18 for SQL Server};"
-            f"SERVER={host},{port};"
-            f"DATABASE={database};"
-            f"UID={user};"
-            f"PWD={password};"
-            "TrustServerCertificate=yes;"
+            "DRIVER={SQL Server};"
+            f"SERVER={config['MySQL']['host']},{config['MySQL']['port']};"
+            f"DATABASE={config['MySQL']['database']};"
+            f"UID={config['MySQL']['user']};"
+            f"PWD={config['MySQL']['password']};"
         )
-        
-        print(f"DEBUG: Încercare conectare cu string: {conn_str.replace(password, '****')}")
         return pyodbc.connect(conn_str)
     except Exception as e:
-        print(f"DEBUG: Eroare la conectarea la baza de date: {str(e)}")
+        print(f"Eroare la conectarea la baza de date: {str(e)}")
         return None
 
 def hash_password(password):
@@ -53,74 +29,88 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def normalize_username(username):
-    """Normalizează username-ul pentru a se potrivi cu formatul din baza de date."""
+    """
+    Normalizează username-ul pentru a se potrivi cu formatul din baza de date.
+    Caută username-ul ignorând punctele și apoi returnează formatul corect din baza de date.
+    """
     try:
-        # Convertim la lowercase și eliminăm spațiile
-        normalized = username.lower().strip()
-        return normalized
+        conn = get_db_connection()
+        if not conn:
+            return username
+            
+        cursor = conn.cursor()
+        
+        # Căutăm username-ul ignorând punctele
+        clean_username = username.replace('.', '')
+        query = """
+            SELECT NumeUtilizator 
+            FROM Utilizatori 
+            WHERE REPLACE(NumeUtilizator, '.', '') = ?
+        """
+        
+        cursor.execute(query, (clean_username,))
+        result = cursor.fetchone()
+        
+        if result:
+            print(f"DEBUG: Found matching username in database: {result[0]}")
+            return result[0]
+            
+        # Dacă nu găsim nimic, returnăm username-ul original
+        print(f"DEBUG: No matching username found for {username}")
+        return username
+        
     except Exception as e:
-        print(f"DEBUG: Eroare la normalizarea username-ului: {str(e)}")
-        return None
+        print(f"DEBUG: Error in normalize_username: {str(e)}")
+        return username
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 def verify_credentials(username, password):
     """Verifică credențialele utilizatorului în baza de date."""
-    conn = None
-    cursor = None
     try:
-        # Normalizăm username-ul înainte de verificare
-        normalized_username = normalize_username(username)
-        if not normalized_username:
-            print("DEBUG: Username invalid")
-            return {'success': False, 'message': 'Username invalid'}
-
-        # Hash-uim parola
-        hashed_password = hash_password(password)
-        
-        # Încercăm să obținem o conexiune
         conn = get_db_connection()
-        if conn is None:
-            print("DEBUG: Nu s-a putut realiza conexiunea la baza de date")
-            return {'success': False, 'message': 'Nu s-a putut realiza conexiunea la baza de date'}
-
+        if not conn:
+            return {'success': False, 'message': 'Eroare la conectarea la baza de date'}
+        
         cursor = conn.cursor()
+        
         query = """
-        SELECT TOP 1 Id, Username, ServiciuId 
-        FROM Users 
-        WHERE Username = ? AND Password = ?
+            SELECT u.ID, u.NumeUtilizator, s.Nume as Serviciu
+            FROM Utilizatori u
+            JOIN Servicii s ON u.ServiciuID = s.ID
+            WHERE u.NumeUtilizator = ?
+            AND u.Parola = ?
         """
+        
+        # Hash-uim parola și normalizăm username-ul
+        hashed_password = hash_password(password)
+        normalized_username = normalize_username(username)
+        print(f"DEBUG: Trying login with normalized username: {normalized_username}")
         
         cursor.execute(query, (normalized_username, hashed_password))
         result = cursor.fetchone()
-
+        
         if result:
-            print(f"DEBUG: Autentificare reușită pentru {normalized_username}")
+            print(f"DEBUG: Found user with ID {result[0]}, username {result[1]}, service {result[2]}")
             return {
                 'success': True,
+                'user_id': result[0],
                 'username': result[1],
                 'serviciu': result[2]
             }
-        
-        print(f"DEBUG: Autentificare eșuată pentru {normalized_username}")
         return {'success': False, 'message': 'Credențiale invalide'}
         
     except Exception as e:
-        print(f"DEBUG: Eroare la verificarea credențialelor: {str(e)}")
-        return {'success': False, 'message': f'Eroare la autentificare: {str(e)}'}
-        
+        print(f"DEBUG: Error during credential verification: {str(e)}")
+        return {'success': False, 'message': f'Eroare de conectare: {str(e)}'}
     finally:
-        if cursor is not None:
-            try:
-                cursor.close()
-                print("DEBUG: Cursor închis cu succes")
-            except Exception as e:
-                print(f"DEBUG: Eroare la închiderea cursorului: {str(e)}")
-        
-        if conn is not None:
-            try:
-                conn.close()
-                print("DEBUG: Conexiune închisă cu succes")
-            except Exception as e:
-                print(f"DEBUG: Eroare la închiderea conexiunii: {str(e)}")
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 def get_user_service(username):
     """Obține serviciul asociat unui utilizator."""
