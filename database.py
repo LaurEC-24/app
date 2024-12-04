@@ -8,17 +8,37 @@ from pathlib import Path
 def get_db_connection():
     """Creează și returnează o conexiune la baza de date."""
     try:
+        # Încercăm să citim credențialele în siguranță
         config = configparser.ConfigParser()
-        config_path = Path(__file__).parent / 'config.ini'
-        config.read(config_path)
         
+        # Căutăm config.ini în directorul curent pentru dezvoltare locală
+        local_config = Path(__file__).parent / 'config.ini'
+        
+        # Căutăm și în /app/secrets pentru Docker
+        docker_config = Path('/app/secrets/config.ini')
+        
+        if local_config.exists():
+            config.read(local_config)
+        elif docker_config.exists():
+            config.read(docker_config)
+        else:
+            raise Exception("Nu s-au găsit credențialele pentru baza de date")
+
+        section = 'MySQL'
+        required_keys = ['host', 'port', 'database', 'user', 'password']
+        
+        # Verificăm dacă toate cheile necesare există
+        if not all(key in config[section] for key in required_keys):
+            raise Exception("Lipsesc configurări necesare pentru baza de date")
+
         conn_str = (
             "DRIVER={SQL Server};"
-            f"SERVER={config['MySQL']['host']},{config['MySQL']['port']};"
-            f"DATABASE={config['MySQL']['database']};"
-            f"UID={config['MySQL']['user']};"
-            f"PWD={config['MySQL']['password']};"
+            f"SERVER={config[section]['host']},{config[section]['port']};"
+            f"DATABASE={config[section]['database']};"
+            f"UID={config[section]['user']};"
+            f"PWD={config[section]['password']};"
         )
+        
         return pyodbc.connect(conn_str)
     except Exception as e:
         print(f"Eroare la conectarea la baza de date: {str(e)}")
