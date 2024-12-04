@@ -42,7 +42,7 @@ def get_db_connection():
             "TrustServerCertificate=yes;"
         )
         
-        print(f"DEBUG: Încercare conectare cu string: {conn_str}")
+        print(f"DEBUG: Încercare conectare cu string: {conn_str.replace(password, '****')}")
         return pyodbc.connect(conn_str)
     except Exception as e:
         print(f"DEBUG: Eroare la conectarea la baza de date: {str(e)}")
@@ -53,65 +53,36 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def normalize_username(username):
-    """
-    Normalizează username-ul pentru a se potrivi cu formatul din baza de date.
-    Caută username-ul ignorând punctele și apoi returnează formatul corect din baza de date.
-    """
+    """Normalizează username-ul pentru a se potrivi cu formatul din baza de date."""
     try:
-        conn = get_db_connection()
-        if not conn:
-            return username
-            
-        cursor = conn.cursor()
-        
-        # Căutăm username-ul ignorând punctele
-        clean_username = username.replace('.', '')
-        query = """
-            SELECT NumeUtilizator 
-            FROM Utilizatori 
-            WHERE REPLACE(NumeUtilizator, '.', '') = ?
-        """
-        
-        cursor.execute(query, (clean_username,))
-        result = cursor.fetchone()
-        
-        if result:
-            print(f"DEBUG: Found matching username in database: {result[0]}")
-            return result[0]
-            
-        # Dacă nu găsim nimic, returnăm username-ul original
-        print(f"DEBUG: No matching username found for {username}")
-        return username
-        
+        # Convertim la lowercase și eliminăm spațiile
+        normalized = username.lower().strip()
+        return normalized
     except Exception as e:
-        print(f"DEBUG: Error in normalize_username: {str(e)}")
-        return username
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
+        print(f"DEBUG: Eroare la normalizarea username-ului: {str(e)}")
+        return None
 
 def verify_credentials(username, password):
     """Verifică credențialele utilizatorului în baza de date."""
     conn = None
     cursor = None
     try:
+        # Normalizăm username-ul înainte de verificare
+        normalized_username = normalize_username(username)
+        if not normalized_username:
+            print("DEBUG: Username invalid")
+            return {'success': False, 'message': 'Username invalid'}
+
+        # Hash-uim parola
+        hashed_password = hash_password(password)
+        
         # Încercăm să obținem o conexiune
         conn = get_db_connection()
         if conn is None:
             print("DEBUG: Nu s-a putut realiza conexiunea la baza de date")
             return {'success': False, 'message': 'Nu s-a putut realiza conexiunea la baza de date'}
 
-        # Deschidem cursor și executăm query
         cursor = conn.cursor()
-        hashed_password = hash_password(password)
-        normalized_username = normalize_username(username)
-        
-        if not normalized_username:
-            print("DEBUG: Username invalid")
-            return {'success': False, 'message': 'Utilizator negăsit'}
-
         query = """
         SELECT TOP 1 Id, Username, ServiciuId 
         FROM Users 
@@ -137,7 +108,6 @@ def verify_credentials(username, password):
         return {'success': False, 'message': f'Eroare la autentificare: {str(e)}'}
         
     finally:
-        # Închiderea în siguranță a resurselor
         if cursor is not None:
             try:
                 cursor.close()
