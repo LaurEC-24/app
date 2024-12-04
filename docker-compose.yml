@@ -2,11 +2,13 @@ version: '3'
 
 services:
   appelcen:
-    build: .
+    build:
+      context: https://github.com/LaurEC-24/app.git#main
+      dockerfile: Dockerfile
     ports:
       - "8501:8501"
     volumes:
-      - ./logs:/app/logs
+      - /opt/appelcen/logs:/app/logs
     environment:
       - TZ=Europe/Bucharest
     restart: unless-stopped
