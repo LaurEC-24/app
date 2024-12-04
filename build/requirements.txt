@@ -1,4 +1,0 @@
-streamlit==1.29.0
-pyodbc==4.0.39
-pandas
-configparser
