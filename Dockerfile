@@ -16,6 +16,9 @@ RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
     && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
     && rm -rf /var/lib/apt/lists/*
 
+# Configurăm driver-ul ODBC
+RUN echo "[ODBC Driver 18 for SQL Server]\nDriver = /opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.*.so.*.*.* \nUsageCount = 1\n" >> /etc/odbcinst.ini
+
 # Setăm directorul de lucru
 WORKDIR /app
 
@@ -29,5 +32,5 @@ COPY . .
 # Expunem portul Streamlit
 EXPOSE 8501
 
-# Comandă pentru rulare
-CMD ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+# Comanda de pornire
+CMD ["streamlit", "run", "main.py"]

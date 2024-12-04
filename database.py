@@ -70,9 +70,12 @@ def normalize_username(username):
 
 def verify_credentials(username, password):
     """Verifică credențialele utilizatorului în baza de date."""
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
+            print("DEBUG: Nu s-a putut realiza conexiunea la baza de date")
             return {'success': False, 'message': 'Eroare la conectarea la baza de date'}
         
         cursor = conn.cursor()
@@ -107,9 +110,9 @@ def verify_credentials(username, password):
         print(f"DEBUG: Error during credential verification: {str(e)}")
         return {'success': False, 'message': f'Eroare de conectare: {str(e)}'}
     finally:
-        if 'cursor' in locals():
+        if cursor:
             cursor.close()
-        if 'conn' in locals():
+        if conn:
             conn.close()
 
 def get_user_service(username):
