@@ -30,7 +30,8 @@ def get_db_connection():
             password = os.getenv('DB_PASSWORD')
 
         if not all([host, port, database, user, password]):
-            raise Exception("Lipsesc configurări necesare pentru baza de date")
+            print("DEBUG: Lipsesc configurări necesare pentru baza de date")
+            return None
 
         conn_str = (
             "DRIVER={ODBC Driver 18 for SQL Server};"
@@ -41,9 +42,10 @@ def get_db_connection():
             "TrustServerCertificate=yes;"
         )
         
+        print(f"DEBUG: Încercare conectare cu string: {conn_str}")
         return pyodbc.connect(conn_str)
     except Exception as e:
-        print(f"Eroare la conectarea la baza de date: {str(e)}")
+        print(f"DEBUG: Eroare la conectarea la baza de date: {str(e)}")
         return None
 
 def hash_password(password):
@@ -97,9 +99,8 @@ def verify_credentials(username, password):
     try:
         conn = get_db_connection()
         if not conn:
-            print("DEBUG: Nu s-a putut realiza conexiunea la baza de date")
             return {'success': False, 'message': 'Nu s-a putut realiza conexiunea la baza de date'}
-            
+        
         cursor = conn.cursor()
         hashed_password = hash_password(password)
         
@@ -123,7 +124,6 @@ def verify_credentials(username, password):
                 'serviciu': result[2]
             }
         return {'success': False, 'message': 'Credențiale invalide'}
-        
     except Exception as e:
         print(f"DEBUG: Error during credential verification: {str(e)}")
         return {'success': False, 'message': f'Eroare de conectare: {str(e)}'}
