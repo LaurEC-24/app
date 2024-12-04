@@ -33,11 +33,12 @@ def get_db_connection():
             raise Exception("Lipsesc configurări necesare pentru baza de date")
 
         conn_str = (
-            "DRIVER={SQL Server};"
+            "DRIVER={ODBC Driver 18 for SQL Server};"
             f"SERVER={host},{port};"
             f"DATABASE={database};"
             f"UID={user};"
             f"PWD={password};"
+            "TrustServerCertificate=yes;"
         )
         
         return pyodbc.connect(conn_str)
