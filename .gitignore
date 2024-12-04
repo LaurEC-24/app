@@ -1,0 +1,36 @@
+# Configurări și credențiale
+config.ini
+*.env
+security_config.py
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs și fișiere de sistem
+*.log
+logs/
+*.tmp
+*.bak
+*.swp
+
+# Mediu virtual
+venv/
+env/
+ENV/
+
+# Fișiere de date sensibile
+*.csv
+*.xlsx
+*.db
+*.sqlite3
+
+# Fișiere de sistem Windows
+Thumbs.db
+desktop.ini
+
+# Alte fișiere temporare
+.DS_Store
+.idea/
+.vscode/
