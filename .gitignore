@@ -1,21 +1,25 @@
 # Configurări și credențiale
 config.ini
-*.env
-security_config.py
 
-# Cache Python
+# Build și cache
+/build/
 __pycache__/
+*.pyc
 *.py[cod]
 *$py.class
 
-# Logs și fișiere de sistem
-*.log
+# Environment și configurare
+*.env
+security_config.py
+
+# Logs și temp
 logs/
+*.log
 *.tmp
 *.bak
 *.swp
 
-# Mediu virtual
+# Virtual Environment
 venv/
 env/
 ENV/
@@ -30,7 +34,10 @@ ENV/
 Thumbs.db
 desktop.ini
 
-# Alte fișiere temporare
-.DS_Store
-.idea/
+# IDE
 .vscode/
+.idea/
+.DS_Store
+
+# Backups
+Backups/

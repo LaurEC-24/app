@@ -1,4 +1,4 @@
-version: '3'
+version: '3.8'
 
 services:
   appelcen:
@@ -11,11 +11,11 @@ services:
       - ./logs:/app/logs
     environment:
       - TZ=Europe/Bucharest
-      - STREAMLIT_SERVER_PORT=8501
-      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
       - DB_HOST=10.10.8.12
       - DB_PORT=1433
       - DB_NAME=Interventii
       - DB_USER=Laur
       - DB_PASSWORD=Hh1236996321
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_PORT=8501
     restart: unless-stopped
