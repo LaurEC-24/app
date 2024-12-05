@@ -117,9 +117,12 @@ def verify_credentials(username, password):
 
 def get_user_service(username):
     """Obține serviciul asociat unui utilizator."""
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
+            print("DEBUG: Nu s-a putut obține conexiunea la baza de date")
             return None
         
         cursor = conn.cursor()
@@ -141,15 +144,16 @@ def get_user_service(username):
         if result:
             print(f"DEBUG: Found service {result[0]} for user {normalized_username}")
             return result[0]
+        print(f"DEBUG: No service found for user {normalized_username}")
         return None
         
     except Exception as e:
         print(f"Eroare la obținerea serviciului: {str(e)}")
         return None
     finally:
-        if 'cursor' in locals():
+        if cursor:
             cursor.close()
-        if 'conn' in locals():
+        if conn:
             conn.close()
 
 def get_interventii():
