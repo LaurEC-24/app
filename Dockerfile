@@ -1,8 +1,13 @@
-# Folosim o imagine Python oficială
-FROM python:3.11-slim
+# Folosim o imagine Ubuntu 20.04 ca imagine de bază
+FROM ubuntu:20.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Europe/Bucharest
 
 # Instalăm dependențele necesare
 RUN apt-get update && apt-get install -y \
+    python3.9 \
+    python3-pip \
     curl \
     gnupg2 \
     unixodbc \
@@ -10,9 +15,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Adăugăm repository-ul Microsoft și instalăm ODBC Driver
-RUN curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft-archive-keyring.gpg \
-    && curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list \
-    && echo "deb [signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] https://packages.microsoft.com/debian/11/prod bullseye main" > /etc/apt/sources.list.d/mssql-release.list \
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+    && curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list > /etc/apt/sources.list.d/mssql-release.list \
     && apt-get update \
     && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
     && rm -rf /var/lib/apt/lists/*
@@ -25,7 +29,7 @@ WORKDIR /app
 
 # Copiem doar requirements.txt primul pentru a folosi cache-ul Docker
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Copiem restul fișierelor
 COPY . .
@@ -34,4 +38,4 @@ COPY . .
 EXPOSE 8501
 
 # Comanda de pornire
-CMD ["streamlit", "run", "main.py"]
+CMD ["python3", "-m", "streamlit", "run", "main.py"]
