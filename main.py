@@ -96,12 +96,25 @@ def init_session_state():
     
     logging.info(f"Recuperare cookie-uri: auth_data={saved_auth_data}")
     
-    if saved_auth_data and isinstance(saved_auth_data, dict) and 'username' in saved_auth_data and 'auth_status' in saved_auth_data and saved_auth_data['auth_status'] == 'true':
-        logging.info("Cookie-uri valide găsite, restaurăm sesiunea")
-        st.session_state['authentication_status'] = True
-        st.session_state['username'] = saved_auth_data['username']
-        st.session_state['service'] = get_user_service(saved_auth_data['username'])
-        st.session_state['login_time'] = datetime.now()
+    if saved_auth_data and isinstance(saved_auth_data, dict) and 'username' in saved_auth_data:
+        # Verificăm credențialele din nou
+        username = saved_auth_data['username']
+        result = verify_credentials(username, None)
+        
+        if result['success']:
+            logging.info("Credențiale verificate cu succes, restaurăm sesiunea")
+            st.session_state['authentication_status'] = True
+            st.session_state['username'] = username
+            st.session_state['service'] = get_user_service(username)
+            st.session_state['login_time'] = datetime.now()
+        else:
+            logging.warning("Credențiale invalide în cookie, ștergem sesiunea")
+            cookie_manager = get_manager()
+            cookie_manager.delete('auth_data')
+            st.session_state['authentication_status'] = False
+            st.session_state['username'] = None
+            st.session_state['service'] = None
+            st.session_state['login_time'] = None
     else:
         logging.info("Nu s-au găsit cookie-uri valide, inițializăm sesiune nouă")
         if 'authentication_status' not in st.session_state:
@@ -174,7 +187,8 @@ def show_login_page():
         if submitted and username and password:
             st.session_state['last_attempt_time'] = datetime.now()
             
-            if verify_credentials(username, password):
+            result = verify_credentials(username, password)
+            if result['success']:
                 # Setăm cookie-urile pentru sesiune persistentă
                 cookie_manager = get_manager()
                 expiry = datetime.now() + timedelta(days=1)
@@ -197,8 +211,8 @@ def show_login_page():
                 st.rerun()
             else:
                 st.session_state['login_attempts'] += 1
-                logging.warning(f"Încercare eșuată de autentificare pentru utilizatorul {username}")
-                st.error("Autentificare eșuată. Verificați numele de utilizator și parola.")
+                logging.warning(f"Încercare eșuată de autentificare pentru utilizatorul {username}: {result['message']}")
+                st.error(f"Autentificare eșuată: {result['message']}")
                 if st.session_state['login_attempts'] >= MAX_LOGIN_ATTEMPTS:
                     st.error(f"Ați depășit numărul maxim de încercări. Contul va fi blocat pentru {LOGIN_COOLDOWN.seconds//60} minute.")
     return False

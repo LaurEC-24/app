@@ -43,8 +43,34 @@ def get_db_connection():
         return None
 
 def hash_password(password):
-    """Creează un hash pentru parolă folosind SHA-256."""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Creează un hash pentru parolă folosind SHA-256 cu salt."""
+    if not password:
+        print("DEBUG: Attempt to hash empty password")
+        return None
+        
+    # Adăugăm un salt constant pentru toate parolele
+    salt = "AppElcen2023"  # Acest salt ar trebui să fie într-un fișier de configurare securizat
+    
+    try:
+        # Convertim parola la string și eliminăm spațiile de la început și sfârșit
+        password_str = str(password).strip()
+        
+        # Verificăm dacă parola este goală după curățare
+        if not password_str:
+            print("DEBUG: Password is empty after cleaning")
+            return None
+            
+        # Combinăm parola cu salt-ul
+        salted_password = password_str + salt
+        
+        # Creăm hash-ul
+        hashed = hashlib.sha256(salted_password.encode()).hexdigest()
+        print(f"DEBUG: Created hash for password: {hashed}")
+        return hashed
+        
+    except Exception as e:
+        print(f"DEBUG: Error creating password hash: {str(e)}")
+        return None
 
 def normalize_username(username):
     """
@@ -90,11 +116,15 @@ def normalize_username(username):
         if conn:
             conn.close()
 
-def verify_credentials(username, password):
+def verify_credentials(username, password=None):
     """Verifică credențialele utilizatorului în baza de date."""
     conn = None
     cursor = None
     try:
+        print("\nDEBUG: === Începe verificarea credențialelor ===")
+        print(f"DEBUG: Username primit: {username}")
+        print(f"DEBUG: Parolă primită: {'[NONE]' if password is None else '[SET]'}")
+        
         conn = get_db_connection()
         if not conn:
             print("DEBUG: Nu s-a putut realiza conexiunea la baza de date")
@@ -102,34 +132,78 @@ def verify_credentials(username, password):
         
         cursor = conn.cursor()
         
-        query = """
-            SELECT u.ID, u.NumeUtilizator, s.Nume as Serviciu
+        # Mai întâi găsim utilizatorul pentru a verifica dacă există
+        find_user_query = """
+            SELECT u.ID, u.NumeUtilizator, u.Parola, s.Nume as Serviciu, u.EsteManager
             FROM Utilizatori u
             JOIN Servicii s ON u.ServiciuID = s.ID
             WHERE u.NumeUtilizator = ?
-            AND u.Parola = ?
         """
         
-        # Hash-uim parola și normalizăm username-ul
-        hashed_password = hash_password(password)
         normalized_username = normalize_username(username)
-        print(f"DEBUG: Trying login with normalized username: {normalized_username}")
+        print(f"DEBUG: Username normalizat: {normalized_username}")
         
-        cursor.execute(query, (normalized_username, hashed_password))
-        result = cursor.fetchone()
+        cursor.execute(find_user_query, (normalized_username,))
+        user = cursor.fetchone()
         
-        if result:
-            print(f"DEBUG: Found user with ID {result[0]}, username {result[1]}, service {result[2]}")
+        if not user:
+            print("DEBUG: Utilizatorul nu a fost găsit în baza de date")
+            return {'success': False, 'message': 'Credențiale invalide'}
+            
+        print(f"DEBUG: Utilizator găsit: ID={user[0]}, Username={user[1]}")
+            
+        # Dacă verificăm doar username-ul (pentru sesiune), returnăm success
+        if password is None:
+            print("DEBUG: Verificare doar username pentru sesiune")
             return {
                 'success': True,
-                'user_id': result[0],
-                'username': result[1],
-                'serviciu': result[2]
+                'user_id': user[0],
+                'username': user[1],
+                'serviciu': user[3],
+                'este_manager': user[4] == 1
             }
-        return {'success': False, 'message': 'Credențiale invalide'}
+        
+        # Verificăm dacă parola introdusă este goală
+        if not password:
+            print("DEBUG: Parola introdusă este goală")
+            return {'success': False, 'message': 'Parola invalidă'}
+            
+        # Comparăm parola introdusă cu cea din baza de date
+        stored_password = user[2].strip() if user[2] else ''
+        hashed_input_password = hash_password(password)
+        
+        print("\nDEBUG: === Verificare parolă ===")
+        print(f"DEBUG: Hash pentru parola corectă '12345': {hash_password('12345')}")
+        print(f"DEBUG: Hash pentru parola introdusă: {hashed_input_password}")
+        print(f"DEBUG: Hash stocat în baza de date: {stored_password}")
+        
+        if not hashed_input_password:
+            print("DEBUG: Nu s-a putut genera hash-ul pentru parola introdusă")
+            return {'success': False, 'message': 'Eroare la procesarea parolei'}
+            
+        if hashed_input_password != stored_password:
+            print("\nDEBUG: PAROLĂ INVALIDĂ!")
+            print(f"DEBUG: Hash-urile nu se potrivesc:")
+            print(f"DEBUG: - Hash parola introdusă : {hashed_input_password}")
+            print(f"DEBUG: - Hash stocat în DB    : {stored_password}")
+            return {'success': False, 'message': 'Credențiale invalide'}
+        
+        print("\nDEBUG: === Autentificare reușită ===")
+        print(f"DEBUG: User ID: {user[0]}")
+        print(f"DEBUG: Username: {user[1]}")
+        print(f"DEBUG: Serviciu: {user[3]}")
+        print(f"DEBUG: Este manager: {user[4] == 1}")
+        
+        return {
+            'success': True,
+            'user_id': user[0],
+            'username': user[1],
+            'serviciu': user[3],
+            'este_manager': user[4] == 1
+        }
         
     except Exception as e:
-        print(f"DEBUG: Error during credential verification: {str(e)}")
+        print(f"DEBUG: Eroare în timpul verificării credențialelor: {str(e)}")
         return {'success': False, 'message': f'Eroare de conectare: {str(e)}'}
     finally:
         if cursor:
@@ -311,21 +385,21 @@ def is_sef_birou(username):
         normalized_username = normalize_username(username)
         
         query = """
-            SELECT 1
-            FROM Utilizatori u
-            WHERE u.NumeUtilizator = ? AND u.EsteManager = 1
+            SELECT EsteManager
+            FROM Utilizatori
+            WHERE NumeUtilizator = ?
         """
         
         print(f"DEBUG: Verificare rol șef pentru utilizatorul {normalized_username}")
         cursor.execute(query, (normalized_username,))
-        result = cursor.fetchone() is not None
+        result = cursor.fetchone()
         
-        if result:
+        if result and result[0] == 1:
             print(f"DEBUG: Utilizatorul {normalized_username} ESTE șef de birou")
+            return True
         else:
             print(f"DEBUG: Utilizatorul {normalized_username} NU este șef de birou")
-        
-        return result
+            return False
         
     except Exception as e:
         print(f"Eroare la verificarea rolului: {str(e)}")
@@ -337,32 +411,51 @@ def is_sef_birou(username):
             conn.close()
 
 def aproba_interventie(nr_crt, approved_by, action='Aprobat'):
-    """Aprobă sau respinge o intervenție folosind procedura stocată."""
+    """Aprobă sau respinge o intervenție direct în baza de date."""
     try:
         conn = get_db_connection()
         if not conn:
+            print("DEBUG: Nu s-a putut realiza conexiunea la baza de date")
             return False
         
         cursor = conn.cursor()
+        print(f"\nDEBUG: === Aprobare intervenție ===")
+        print(f"DEBUG: Nr. crt: {nr_crt}")
+        print(f"DEBUG: Aprobat de: {approved_by}")
+        print(f"DEBUG: Acțiune: {action}")
         
-        # Executăm procedura stocată
-        cursor.execute("{CALL ApproveIntervention (?, ?, ?)}", (nr_crt, approved_by, action))
+        # Facem update direct în baza de date
+        query = """
+            UPDATE RegistruInterventii 
+            SET Status = ?, 
+                DataAprobare = GETDATE(), 
+                AprobatDe = ? 
+            WHERE NrCrt = ?
+        """
         
-        # Obținem rezultatul
-        result = cursor.fetchone()
-        if result and result[0] == 'Success':
+        cursor.execute(query, (action, approved_by, nr_crt))
+        
+        # Verificăm câte rânduri au fost afectate
+        rows_affected = cursor.rowcount
+        print(f"DEBUG: Rânduri afectate: {rows_affected}")
+        
+        if rows_affected > 0:
             conn.commit()
+            print("DEBUG: Tranzacție finalizată cu succes")
             return True
+            
+        print("DEBUG: Nu s-a găsit intervenția pentru actualizare")
         return False
         
     except Exception as e:
-        print(f"Eroare la procesarea intervenției: {str(e)}")
+        print(f"DEBUG: Eroare la procesarea intervenției: {str(e)}")
         return False
     finally:
         if 'cursor' in locals():
             cursor.close()
         if 'conn' in locals():
             conn.close()
+            print("DEBUG: Conexiune închisă")
 
 def sterge_toate_interventiile():
     """Șterge toate intervențiile din baza de date."""

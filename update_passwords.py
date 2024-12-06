@@ -1,6 +1,7 @@
 ## Cripteaza parolele din baza de date cu hash-uri
 import pyodbc
-from database import get_db_connection, hash_password
+from database import get_db_connection
+import hashlib
 
 def is_password_hashed(password):
     """Verifică dacă parola este deja hash-uită (are 64 caractere și conține doar hex)."""
@@ -13,25 +14,25 @@ def is_password_hashed(password):
     except ValueError:
         return False
 
-def update_all_passwords():
+def update_passwords():
     """Actualizează toate parolele din baza de date cu hash-uri."""
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
-            print("Nu s-a putut conecta la baza de date")
+            print("Nu s-a putut realiza conexiunea la baza de date")
             return False
             
         cursor = conn.cursor()
         
-        # Mai întâi luăm toate parolele existente
-        query = "SELECT ID, NumeUtilizator, Parola FROM Utilizatori"
-        cursor.execute(query)
+        # Obținem toți utilizatorii
+        cursor.execute("SELECT ID, NumeUtilizator, Parola FROM Utilizatori")
         users = cursor.fetchall()
         
         updated_count = 0
         skipped_count = 0
         
-        # Actualizăm fiecare parolă cu hash-ul său
         for user in users:
             user_id = user[0]
             username = user[1]
@@ -43,13 +44,14 @@ def update_all_passwords():
                 skipped_count += 1
                 continue
             
-            # Generăm hash-ul parolei
-            hashed_password = hash_password(current_password)
+            # Hash-uim parola curentă
+            salt = "AppElcen2023"
+            hashed_password = hashlib.sha256((current_password + salt).encode()).hexdigest()
             
             # Actualizăm parola în baza de date
             update_query = "UPDATE Utilizatori SET Parola = ? WHERE ID = ?"
             cursor.execute(update_query, (hashed_password, user_id))
-            print(f"Actualizat parola pentru utilizatorul: {username}")
+            print(f"Actualizat parola pentru utilizatorul {username}")
             updated_count += 1
         
         conn.commit()
@@ -61,13 +63,15 @@ def update_all_passwords():
         
     except Exception as e:
         print(f"Eroare la actualizarea parolelor: {str(e)}")
+        if conn:
+            conn.rollback()
         return False
     finally:
-        if 'cursor' in locals():
+        if cursor:
             cursor.close()
-        if 'conn' in locals():
+        if conn:
             conn.close()
 
 if __name__ == "__main__":
-    print("Începe actualizarea parolelor...")
-    update_all_passwords()
+    print("Începem actualizarea parolelor...")
+    update_passwords()

@@ -404,16 +404,18 @@ def show_interventii_page():
                             with col2:
                                 st.write(f"**Personal IT:** {row['Personal IT']}")
                                 st.write(f"**Solicitare:** {row['Solicitare']}")
-                            with col3:
-                                if st.button('✅ Aprobă', key=f'approve_{row["Nr."]}'):
-                                    if aproba_interventie(row['Nr.'], st.session_state['username'], 'Aprobat'):
-                                        st.success(f"Intervenția #{row['Nr.']} a fost aprobată!")
-                                        st.rerun()
-                            with col4:
-                                if st.button('❌ Respinge', key=f'reject_{row["Nr."]}'):
-                                    if aproba_interventie(row['Nr.'], st.session_state['username'], 'Respins'):
-                                        st.error(f"Intervenția #{row['Nr.']} a fost respinsă!")
-                                        st.rerun()
+                            # Afișăm butoanele de aprobare/respingere doar pentru șefii de birou
+                            if is_sef_birou(st.session_state.get('username', '')):
+                                with col3:
+                                    if st.button('✅ Aprobă', key=f'approve_{row["Nr."]}'):
+                                        if aproba_interventie(row['Nr.'], st.session_state['username'], 'Aprobat'):
+                                            st.success(f"Intervenția #{row['Nr.']} a fost aprobată!")
+                                            st.rerun()
+                                with col4:
+                                    if st.button('❌ Respinge', key=f'reject_{row["Nr."]}'):
+                                        if aproba_interventie(row['Nr.'], st.session_state['username'], 'Respins'):
+                                            st.error(f"Intervenția #{row['Nr.']} a fost respinsă!")
+                                            st.rerun()
                             st.markdown("---")
                 else:
                     st.info("Nu există intervenții în așteptare de aprobare.")
