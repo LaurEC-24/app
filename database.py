@@ -8,17 +8,35 @@ from pathlib import Path
 def get_db_connection():
     """Creează și returnează o conexiune la baza de date."""
     try:
-        config = configparser.ConfigParser()
-        config_path = Path(__file__).parent / 'config.ini'
-        config.read(config_path)
-        
+        # Încercăm să folosim variabilele de mediu mai întâi
+        host = os.getenv('DB_HOST')
+        port = os.getenv('DB_PORT')
+        database = os.getenv('DB_NAME')
+        user = os.getenv('DB_USER')
+        password = os.getenv('DB_PASSWORD')
+
+        # Dacă nu avem variabile de mediu, folosim config.ini
+        if not all([host, port, database, user, password]):
+            config = configparser.ConfigParser()
+            config_path = Path(__file__).parent / 'config.ini'
+            config.read(config_path)
+            
+            host = config['MySQL']['host']
+            port = config['MySQL']['port']
+            database = config['MySQL']['database']
+            user = config['MySQL']['user']
+            password = config['MySQL']['password']
+
         conn_str = (
-            "DRIVER={SQL Server};"
-            f"SERVER={config['MySQL']['host']},{config['MySQL']['port']};"
-            f"DATABASE={config['MySQL']['database']};"
-            f"UID={config['MySQL']['user']};"
-            f"PWD={config['MySQL']['password']};"
+            "DRIVER={ODBC Driver 18 for SQL Server};"
+            f"SERVER={host},{port};"
+            f"DATABASE={database};"
+            f"UID={user};"
+            f"PWD={password};"
+            "TrustServerCertificate=yes;"
         )
+        
+        print(f"DEBUG: Trying to connect with string: {conn_str.replace(password, '****')}")
         return pyodbc.connect(conn_str)
     except Exception as e:
         print(f"Eroare la conectarea la baza de date: {str(e)}")
@@ -33,9 +51,12 @@ def normalize_username(username):
     Normalizează username-ul pentru a se potrivi cu formatul din baza de date.
     Caută username-ul ignorând punctele și apoi returnează formatul corect din baza de date.
     """
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
+            print(f"DEBUG: Could not get database connection in normalize_username for {username}")
             return username
             
         cursor = conn.cursor()
@@ -48,6 +69,7 @@ def normalize_username(username):
             WHERE REPLACE(NumeUtilizator, '.', '') = ?
         """
         
+        print(f"DEBUG: Searching for username: {username}, cleaned: {clean_username}")
         cursor.execute(query, (clean_username,))
         result = cursor.fetchone()
         
@@ -63,9 +85,9 @@ def normalize_username(username):
         print(f"DEBUG: Error in normalize_username: {str(e)}")
         return username
     finally:
-        if 'cursor' in locals():
+        if cursor:
             cursor.close()
-        if 'conn' in locals():
+        if conn:
             conn.close()
 
 def verify_credentials(username, password):
@@ -282,25 +304,36 @@ def is_sef_birou(username):
     try:
         conn = get_db_connection()
         if not conn:
+            print("DEBUG: Nu s-a putut obține conexiunea în is_sef_birou")
             return False
         
         cursor = conn.cursor()
+        normalized_username = normalize_username(username)
         
         query = """
             SELECT 1
-            FROM Utilizatori
-            WHERE NumeUtilizator = ? AND NumeUtilizator = 'virgil.ionita'
+            FROM Utilizatori u
+            WHERE u.NumeUtilizator = ? AND u.EsteManager = 1
         """
-        cursor.execute(query, (username,))
-        return cursor.fetchone() is not None
+        
+        print(f"DEBUG: Verificare rol șef pentru utilizatorul {normalized_username}")
+        cursor.execute(query, (normalized_username,))
+        result = cursor.fetchone() is not None
+        
+        if result:
+            print(f"DEBUG: Utilizatorul {normalized_username} ESTE șef de birou")
+        else:
+            print(f"DEBUG: Utilizatorul {normalized_username} NU este șef de birou")
+        
+        return result
         
     except Exception as e:
         print(f"Eroare la verificarea rolului: {str(e)}")
         return False
     finally:
-        if 'cursor' in locals():
+        if cursor:
             cursor.close()
-        if 'conn' in locals():
+        if conn:
             conn.close()
 
 def aproba_interventie(nr_crt, approved_by, action='Aprobat'):

@@ -1,33 +1,13 @@
 import streamlit as st
+import extra_streamlit_components as stx
+import logging
 from database import verify_credentials, get_user_service
 from pages._it_page import show_interventii_page
 from security_config import SESSION_TIMEOUT, MAX_LOGIN_ATTEMPTS, LOGIN_COOLDOWN, sanitize_input
 from datetime import datetime, timedelta
-import logging
 import os
 
-# Creăm directorul pentru loguri dacă nu există
-log_dir = os.path.join(os.path.dirname(__file__), 'logs')
-if not os.path.exists(log_dir):
-    os.makedirs(log_dir)
-
-# Configurare logging
-log_file = os.path.join(log_dir, 'auth.log')
-logging.basicConfig(
-    filename=log_file,
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    encoding='utf-8'
-)
-
-# Adăugăm și logging în consolă
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-console_handler.setFormatter(formatter)
-logging.getLogger('').addHandler(console_handler)
-
-# Ascundem meniul de navigare
+# Configurare pagină - TREBUIE să fie primul apel Streamlit
 st.set_page_config(
     page_title="Aplicație Intervenții",
     page_icon="🔧",
@@ -80,53 +60,105 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Creăm directorul pentru loguri dacă nu există
+log_dir = os.path.join(os.path.dirname(__file__), 'logs')
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+# Configurare logging
+log_file = os.path.join(log_dir, 'auth.log')
+logging.basicConfig(
+    filename=log_file,
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    encoding='utf-8'
+)
+
+# Adăugăm și logging în consolă
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+logging.getLogger('').addHandler(console_handler)
+
+# Inițializare cookie manager ca variabilă globală
+if 'cookie_manager' not in st.session_state:
+    st.session_state.cookie_manager = stx.CookieManager()
+
+def get_manager():
+    """Returnează instanța existentă de CookieManager."""
+    return st.session_state.cookie_manager
+
 def init_session_state():
-    """Inițializează variabilele de sesiune"""
-    if 'authentication_status' not in st.session_state:
-        st.session_state['authentication_status'] = False
-    if 'username' not in st.session_state:
-        st.session_state['username'] = None
-    if 'service' not in st.session_state:
-        st.session_state['service'] = None
+    """Inițializează variabilele de sesiune."""
+    # Încercăm să recuperăm datele din cookie
+    saved_auth_data = get_manager().get('auth_data')
+    
+    logging.info(f"Recuperare cookie-uri: auth_data={saved_auth_data}")
+    
+    if saved_auth_data and isinstance(saved_auth_data, dict) and 'username' in saved_auth_data and 'auth_status' in saved_auth_data and saved_auth_data['auth_status'] == 'true':
+        logging.info("Cookie-uri valide găsite, restaurăm sesiunea")
+        st.session_state['authentication_status'] = True
+        st.session_state['username'] = saved_auth_data['username']
+        st.session_state['service'] = get_user_service(saved_auth_data['username'])
+        st.session_state['login_time'] = datetime.now()
+    else:
+        logging.info("Nu s-au găsit cookie-uri valide, inițializăm sesiune nouă")
+        if 'authentication_status' not in st.session_state:
+            st.session_state['authentication_status'] = False
+        if 'username' not in st.session_state:
+            st.session_state['username'] = None
+        if 'service' not in st.session_state:
+            st.session_state['service'] = None
+        if 'login_time' not in st.session_state:
+            st.session_state['login_time'] = None
+    
     if 'login_attempts' not in st.session_state:
         st.session_state['login_attempts'] = 0
     if 'last_attempt_time' not in st.session_state:
         st.session_state['last_attempt_time'] = None
-    if 'login_time' not in st.session_state:
-        st.session_state['login_time'] = None
+    if 'show_add_form' not in st.session_state:
+        st.session_state['show_add_form'] = False
 
 def check_session_timeout():
     """Verifică dacă sesiunea a expirat"""
-    if st.session_state['login_time']:
-        time_elapsed = datetime.now() - st.session_state['login_time']
-        if time_elapsed > SESSION_TIMEOUT:
-            st.session_state['authentication_status'] = False
-            st.session_state['username'] = None
-            st.session_state['service'] = None
-            st.session_state['login_time'] = None
-            return True
-    return False
+    # Dacă nu suntem autentificați, nu facem nimic
+    if not st.session_state['authentication_status']:
+        return
+
+    # Verificăm dacă avem un timp de login setat
+    if not st.session_state['login_time']:
+        return
+    
+    # Calculăm timpul trecut de la ultima autentificare
+    time_passed = datetime.now() - st.session_state['login_time']
+    
+    # Dacă timpul depășește SESSION_TIMEOUT, deconectăm utilizatorul
+    if time_passed > SESSION_TIMEOUT:
+        st.session_state['authentication_status'] = False
+        st.session_state['username'] = None
+        st.session_state['service'] = None
+        st.session_state['login_time'] = None
+        st.warning('Sesiunea a expirat. Te rog să te reconectezi.')
+        st.rerun()
 
 def show_login_page():
-    # Verifică dacă utilizatorul este deja autentificat
+    """Afișează pagina de login"""
     if st.session_state['authentication_status']:
-        if check_session_timeout():
-            st.warning("Sesiunea a expirat. Vă rugăm să vă autentificați din nou.")
-            return False
-            
         col1, col2 = st.sidebar.columns([3, 1])
         col1.write(f"👤 {st.session_state['username']}")
         if col2.button("Deconectare", key='logout'):
-            st.session_state['authentication_status'] = False
-            st.session_state['username'] = None
-            st.session_state['service'] = None
-            st.session_state['login_time'] = None
-            st.query_params.clear()
-            logging.info(f"Utilizatorul {st.session_state['username']} s-a deconectat")
+            # Ștergem cookie-urile la delogare
+            cookie_manager = get_manager()
+            cookie_manager.delete('auth_data')
+            logging.info("Cookie-uri șterse la delogare")
+            for key in st.session_state.keys():
+                del st.session_state[key]
             st.rerun()
         return True
 
-    # Verifică dacă utilizatorul este blocat
+    st.markdown("<h1 style='text-align: center;'>🔐 Autentificare</h1>", unsafe_allow_html=True)
+    
     if (st.session_state['login_attempts'] >= MAX_LOGIN_ATTEMPTS and 
         st.session_state['last_attempt_time'] and 
         datetime.now() - st.session_state['last_attempt_time'] < LOGIN_COOLDOWN):
@@ -143,6 +175,19 @@ def show_login_page():
             st.session_state['last_attempt_time'] = datetime.now()
             
             if verify_credentials(username, password):
+                # Setăm cookie-urile pentru sesiune persistentă
+                cookie_manager = get_manager()
+                expiry = datetime.now() + timedelta(days=1)
+                
+                # Setăm ambele cookie-uri într-un singur apel
+                cookie_data = {
+                    'username': username,
+                    'auth_status': 'true'
+                }
+                cookie_manager.set('auth_data', cookie_data, expires_at=expiry)
+                
+                logging.info(f"Cookie-uri setate pentru {username} cu expirare la {expiry}")
+                
                 st.session_state['authentication_status'] = True
                 st.session_state['username'] = username
                 st.session_state['service'] = get_user_service(username)
@@ -153,29 +198,23 @@ def show_login_page():
             else:
                 st.session_state['login_attempts'] += 1
                 logging.warning(f"Încercare eșuată de autentificare pentru utilizatorul {username}")
-                st.error("❌ Utilizator sau parolă incorectă!")
+                st.error("Autentificare eșuată. Verificați numele de utilizator și parola.")
                 if st.session_state['login_attempts'] >= MAX_LOGIN_ATTEMPTS:
-                    st.error(f"Cont blocat pentru {LOGIN_COOLDOWN.seconds//60} minute din cauza prea multor încercări eșuate.")
-                return False
-
+                    st.error(f"Ați depășit numărul maxim de încercări. Contul va fi blocat pentru {LOGIN_COOLDOWN.seconds//60} minute.")
     return False
 
 def main():
-    init_session_state()  # Mutăm inițializarea la începutul main
-    st.title("Aplicație Intervenții")
-
-    # Verifică autentificarea
-    if not show_login_page():
-        st.stop()
-
-    # Adăugăm logging pentru a vedea serviciul
-    logging.info(f"Serviciul utilizatorului {st.session_state['username']} este: {st.session_state['service']}")
-
-    if st.session_state['service'] == 'IT':
+    """Funcția principală a aplicației."""
+    # Inițializăm starea sesiunii
+    init_session_state()
+    
+    # Verificăm timeout-ul sesiunii
+    check_session_timeout()
+    
+    # Afișăm pagina de login sau pagina principală
+    if show_login_page():
+        st.title("Aplicație Intervenții")
         show_interventii_page()
-    else:
-        st.warning("Doar utilizatorii din serviciul IT au acces la registrul de intervenții.")
-        st.error(f"Serviciul tău actual este: {st.session_state['service']}")
 
 if __name__ == "__main__":
     main()

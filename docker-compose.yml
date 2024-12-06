@@ -6,13 +6,13 @@ services:
     ports:
       - "8501:8501"
     environment:
-      - DB_HOST=10.10.8.12
-      - DB_PORT=1433
-      - DB_NAME=Interventii
-      - DB_USER=Laur
-      - DB_PASSWORD=Hh1236996321
-      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
-      - STREAMLIT_SERVER_PORT=8501
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - STREAMLIT_SERVER_ADDRESS=${STREAMLIT_SERVER_ADDRESS}
+      - STREAMLIT_SERVER_PORT=${STREAMLIT_SERVER_PORT}
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped

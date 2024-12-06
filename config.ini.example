@@ -1,0 +1,10 @@
+[MySQL]
+host = your_server_ip
+port = 1433
+database = your_database_name
+user = your_username
+password = your_password
+
+[Security]
+max_login_attempts = 3
+login_cooldown_minutes = 15

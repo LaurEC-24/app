@@ -16,6 +16,12 @@ PERSONAL_IT = [
 ]
 
 def show_interventii_page():
+    # Verificăm dacă utilizatorul este autentificat
+    if 'authentication_status' not in st.session_state or not st.session_state['authentication_status']:
+        st.warning("Trebuie să te autentifici pentru a accesa această pagină.")
+        st.stop()
+        return
+
     st.title("Registrul Intervențiilor IT")
     
     # CSS pentru formularul de intervenție
@@ -76,7 +82,7 @@ def show_interventii_page():
     </style>
     """, unsafe_allow_html=True)
     
-    # Inițializare variabilă de sesiune pentru formularul de adăugare
+    # Inițializăm starea formularului dacă nu există
     if 'show_add_form' not in st.session_state:
         st.session_state['show_add_form'] = False
     
@@ -275,7 +281,7 @@ def show_interventii_page():
             df = df.rename(columns=columns_order)
             
             # Formatăm ora pentru a afișa doar HH:MM
-            df['Ora'] = pd.to_datetime(df['Ora'], format='mixed').dt.strftime('%H:%M')
+            df['Ora'] = df['Ora'].apply(lambda x: x.strftime('%H:%M') if pd.notnull(x) else '')
             
             df = df[list(columns_order.values())]
             
@@ -364,56 +370,52 @@ def show_interventii_page():
             )
             
             # Adăugăm statistici
-            st.markdown("---")
+            st.markdown("### 📊 Statistici")
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                total_aprobate = len(df[df['Status'] == 'Aprobat'])
-                st.metric("✅ Intervenții Aprobate", total_aprobate)
+                total_interventii = len(df)
+                st.metric("📝 Total Intervenții", total_interventii)
             
             with col2:
-                total_respinse = len(df[df['Status'] == 'Respins'])
-                st.metric("❌ Intervenții Respinse", total_respinse)
+                total_aprobate = len(df[df['Status'] == 'Aprobat'])
+                st.metric("✅ Intervenții Aprobate", total_aprobate)
             
             with col3:
                 total_asteptare = len(df[df['Status'] == 'In Asteptare'])
                 st.metric("⏳ Intervenții în Așteptare", total_asteptare)
             
-            # Dacă este virgil.ionita, afișăm secțiunea de aprobare
-            if st.session_state['username'] == 'virgil.ionita':
+            # Dacă este șef de birou, afișăm secțiunea de aprobare
+            if is_sef_birou(st.session_state.get('username', '')):
+                print(f"DEBUG: Utilizator {st.session_state.get('username')} este șef de birou")
                 st.markdown("---")
                 st.markdown("### 📋 Aprobare Intervenții")
                 st.markdown("Selectați intervențiile pe care doriți să le procesați:")
                 
-                # Filtrăm doar intervențiile în așteptare (verificăm ambele variante posibile)
                 interventii_asteptare = df[df['Status'].isin(['In Asteptare', 'In asteptare', 'in asteptare'])]
                 
                 if not interventii_asteptare.empty:
-                    for _, row in interventii_asteptare.iterrows():
+                    for idx, row in interventii_asteptare.iterrows():
                         with st.container():
                             col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
                             with col1:
-                                st.markdown(f"**Intervenția #{row['Nr.']}** din {row['Data']}")
-                                st.markdown(f"Personal IT: **{row['Personal IT']}**")
+                                st.write(f"**Data:** {row['Data']} | **Ora:** {row['Ora']}")
+                                st.write(f"**Solicitant:** {row['Solicitant']}")
                             with col2:
-                                st.markdown(f"Solicitant: **{row['Solicitant']}**")
-                                st.markdown(f"Solicitare: {row['Solicitare'][:100]}...")
+                                st.write(f"**Personal IT:** {row['Personal IT']}")
+                                st.write(f"**Solicitare:** {row['Solicitare']}")
                             with col3:
-                                if st.button("✅ Aprobă", key=f"approve_{row['Nr.']}"):
+                                if st.button('✅ Aprobă', key=f'approve_{row["Nr."]}'):
                                     if aproba_interventie(row['Nr.'], st.session_state['username'], 'Aprobat'):
-                                        st.success(f"✅ Intervenția #{row['Nr.']} a fost aprobată!")
+                                        st.success(f"Intervenția #{row['Nr.']} a fost aprobată!")
                                         st.rerun()
-                                    else:
-                                        st.error("❌ Eroare la aprobarea intervenției!")
                             with col4:
-                                if st.button("❌ Respinge", key=f"reject_{row['Nr.']}"):
+                                if st.button('❌ Respinge', key=f'reject_{row["Nr."]}'):
                                     if aproba_interventie(row['Nr.'], st.session_state['username'], 'Respins'):
-                                        st.warning(f"❌ Intervenția #{row['Nr.']} a fost respinsă!")
+                                        st.error(f"Intervenția #{row['Nr.']} a fost respinsă!")
                                         st.rerun()
-                                    else:
-                                        st.error("❌ Eroare la respingerea intervenției!")
                             st.markdown("---")
                 else:
-                    st.info("👍 Nu există intervenții în așteptare de procesare.")
+                    st.info("Nu există intervenții în așteptare de aprobare.")
         else:
             st.info("Nu există intervenții înregistrate.")
