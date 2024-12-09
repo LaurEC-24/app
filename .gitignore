@@ -39,5 +39,9 @@ desktop.ini
 .idea/
 .DS_Store
 
+# Directoare utilitare
+/scripts/
+/tests/
+
 # Backups
 Backups/

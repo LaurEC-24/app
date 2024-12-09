@@ -4,6 +4,8 @@ from datetime import datetime
 import hashlib
 import os
 from pathlib import Path
+import logging
+from utils import normalize_username
 
 def get_db_connection():
     """Creează și returnează o conexiune la baza de date."""
@@ -36,16 +38,16 @@ def get_db_connection():
             "TrustServerCertificate=yes;"
         )
         
-        print(f"DEBUG: Trying to connect with string: {conn_str.replace(password, '****')}")
+        logging.info("Încercare de conectare la baza de date")
         return pyodbc.connect(conn_str)
     except Exception as e:
-        print(f"Eroare la conectarea la baza de date: {str(e)}")
+        logging.error(f"Eroare la conectarea la baza de date: {str(e)}")
         return None
 
 def hash_password(password):
     """Creează un hash pentru parolă folosind SHA-256 cu salt."""
     if not password:
-        print("DEBUG: Attempt to hash empty password")
+        logging.warning("Încercare de a hash-a unei parole vide")
         return None
         
     # Adăugăm un salt constant pentru toate parolele
@@ -57,7 +59,7 @@ def hash_password(password):
         
         # Verificăm dacă parola este goală după curățare
         if not password_str:
-            print("DEBUG: Password is empty after cleaning")
+            logging.warning("Parola este goală după curățare")
             return None
             
         # Combinăm parola cu salt-ul
@@ -65,11 +67,11 @@ def hash_password(password):
         
         # Creăm hash-ul
         hashed = hashlib.sha256(salted_password.encode()).hexdigest()
-        print(f"DEBUG: Created hash for password: {hashed}")
+        logging.info(f"Hash creat pentru parolă: {hashed}")
         return hashed
         
     except Exception as e:
-        print(f"DEBUG: Error creating password hash: {str(e)}")
+        logging.error(f"Eroare la crearea hash-ului parolei: {str(e)}")
         return None
 
 def normalize_username(username):
@@ -82,7 +84,7 @@ def normalize_username(username):
     try:
         conn = get_db_connection()
         if not conn:
-            print(f"DEBUG: Could not get database connection in normalize_username for {username}")
+            logging.warning(f"Nu s-a putut obține conexiunea la baza de date în normalize_username pentru {username}")
             return username
             
         cursor = conn.cursor()
@@ -95,20 +97,20 @@ def normalize_username(username):
             WHERE REPLACE(NumeUtilizator, '.', '') = ?
         """
         
-        print(f"DEBUG: Searching for username: {username}, cleaned: {clean_username}")
+        logging.info(f"Căutăm username: {username}, curățat: {clean_username}")
         cursor.execute(query, (clean_username,))
         result = cursor.fetchone()
         
         if result:
-            print(f"DEBUG: Found matching username in database: {result[0]}")
+            logging.info(f"Am găsit un username potrivit în baza de date: {result[0]}")
             return result[0]
             
         # Dacă nu găsim nimic, returnăm username-ul original
-        print(f"DEBUG: No matching username found for {username}")
+        logging.info(f"Nu am găsit un username potrivit pentru {username}")
         return username
         
     except Exception as e:
-        print(f"DEBUG: Error in normalize_username: {str(e)}")
+        logging.error(f"Eroare în normalize_username: {str(e)}")
         return username
     finally:
         if cursor:
@@ -121,13 +123,13 @@ def verify_credentials(username, password=None):
     conn = None
     cursor = None
     try:
-        print("\nDEBUG: === Începe verificarea credențialelor ===")
-        print(f"DEBUG: Username primit: {username}")
-        print(f"DEBUG: Parolă primită: {'[NONE]' if password is None else '[SET]'}")
+        logging.info("\n=== Începe verificarea credențialelor ===")
+        logging.info(f"Username primit: {username}")
+        logging.info(f"Parolă primită: {'[NONE]' if password is None else '[SET]'}")
         
         conn = get_db_connection()
         if not conn:
-            print("DEBUG: Nu s-a putut realiza conexiunea la baza de date")
+            logging.error("Nu s-a putut realiza conexiunea la baza de date")
             return {'success': False, 'message': 'Eroare la conectarea la baza de date'}
         
         cursor = conn.cursor()
@@ -141,20 +143,20 @@ def verify_credentials(username, password=None):
         """
         
         normalized_username = normalize_username(username)
-        print(f"DEBUG: Username normalizat: {normalized_username}")
+        logging.info(f"Username normalizat: {normalized_username}")
         
         cursor.execute(find_user_query, (normalized_username,))
         user = cursor.fetchone()
         
         if not user:
-            print("DEBUG: Utilizatorul nu a fost găsit în baza de date")
+            logging.info("Utilizatorul nu a fost găsit în baza de date")
             return {'success': False, 'message': 'Credențiale invalide'}
             
-        print(f"DEBUG: Utilizator găsit: ID={user[0]}, Username={user[1]}")
+        logging.info(f"Utilizator găsit: ID={user[0]}, Username={user[1]}")
             
         # Dacă verificăm doar username-ul (pentru sesiune), returnăm success
         if password is None:
-            print("DEBUG: Verificare doar username pentru sesiune")
+            logging.info("Verificare doar username pentru sesiune")
             return {
                 'success': True,
                 'user_id': user[0],
@@ -165,34 +167,34 @@ def verify_credentials(username, password=None):
         
         # Verificăm dacă parola introdusă este goală
         if not password:
-            print("DEBUG: Parola introdusă este goală")
+            logging.warning("Parola introdusă este goală")
             return {'success': False, 'message': 'Parola invalidă'}
             
         # Comparăm parola introdusă cu cea din baza de date
         stored_password = user[2].strip() if user[2] else ''
         hashed_input_password = hash_password(password)
         
-        print("\nDEBUG: === Verificare parolă ===")
-        print(f"DEBUG: Hash pentru parola corectă '12345': {hash_password('12345')}")
-        print(f"DEBUG: Hash pentru parola introdusă: {hashed_input_password}")
-        print(f"DEBUG: Hash stocat în baza de date: {stored_password}")
+        logging.info("\n=== Verificare parolă ===")
+        logging.info(f"Hash pentru parola corectă '12345': {hash_password('12345')}")
+        logging.info(f"Hash pentru parola introdusă: {hashed_input_password}")
+        logging.info(f"Hash stocat în baza de date: {stored_password}")
         
         if not hashed_input_password:
-            print("DEBUG: Nu s-a putut genera hash-ul pentru parola introdusă")
+            logging.error("Nu s-a putut genera hash-ul pentru parola introdusă")
             return {'success': False, 'message': 'Eroare la procesarea parolei'}
             
         if hashed_input_password != stored_password:
-            print("\nDEBUG: PAROLĂ INVALIDĂ!")
-            print(f"DEBUG: Hash-urile nu se potrivesc:")
-            print(f"DEBUG: - Hash parola introdusă : {hashed_input_password}")
-            print(f"DEBUG: - Hash stocat în DB    : {stored_password}")
+            logging.info("\nPAROLĂ INVALIDĂ!")
+            logging.info(f"Hash-urile nu se potrivesc:")
+            logging.info(f"Hash parola introdusă : {hashed_input_password}")
+            logging.info(f"Hash stocat în DB    : {stored_password}")
             return {'success': False, 'message': 'Credențiale invalide'}
         
-        print("\nDEBUG: === Autentificare reușită ===")
-        print(f"DEBUG: User ID: {user[0]}")
-        print(f"DEBUG: Username: {user[1]}")
-        print(f"DEBUG: Serviciu: {user[3]}")
-        print(f"DEBUG: Este manager: {user[4] == 1}")
+        logging.info("\n=== Autentificare reușită ===")
+        logging.info(f"User ID: {user[0]}")
+        logging.info(f"Username: {user[1]}")
+        logging.info(f"Serviciu: {user[3]}")
+        logging.info(f"Este manager: {user[4] == 1}")
         
         return {
             'success': True,
@@ -203,7 +205,7 @@ def verify_credentials(username, password=None):
         }
         
     except Exception as e:
-        print(f"DEBUG: Eroare în timpul verificării credențialelor: {str(e)}")
+        logging.error(f"Eroare în timpul verificării credențialelor: {str(e)}")
         return {'success': False, 'message': f'Eroare de conectare: {str(e)}'}
     finally:
         if cursor:
@@ -218,7 +220,7 @@ def get_user_service(username):
     try:
         conn = get_db_connection()
         if not conn:
-            print("DEBUG: Nu s-a putut obține conexiunea la baza de date")
+            logging.error("Nu s-a putut obține conexiunea la baza de date")
             return None
         
         cursor = conn.cursor()
@@ -232,19 +234,19 @@ def get_user_service(username):
         
         # Normalizăm username-ul
         normalized_username = normalize_username(username)
-        print(f"DEBUG: Getting service for normalized username: {normalized_username}")
+        logging.info(f"Obținem serviciul pentru username normalizat: {normalized_username}")
         
         cursor.execute(query, (normalized_username,))
         result = cursor.fetchone()
         
         if result:
-            print(f"DEBUG: Found service {result[0]} for user {normalized_username}")
+            logging.info(f"Am găsit serviciul {result[0]} pentru utilizator {normalized_username}")
             return result[0]
-        print(f"DEBUG: No service found for user {normalized_username}")
+        logging.info(f"Nu am găsit serviciul pentru utilizator {normalized_username}")
         return None
         
     except Exception as e:
-        print(f"Eroare la obținerea serviciului: {str(e)}")
+        logging.error(f"Eroare la obținerea serviciului: {str(e)}")
         return None
     finally:
         if cursor:
@@ -289,7 +291,7 @@ def get_interventii():
         return results
         
     except Exception as e:
-        print(f"Eroare la obținerea intervențiilor: {str(e)}")
+        logging.error(f"Eroare la obținerea intervențiilor: {str(e)}")
         return []
     finally:
         if 'cursor' in locals():
@@ -308,7 +310,7 @@ def adauga_interventie(data_interventie, zi, solicitant, solicitare, ora, durata
         
         # Validăm lungimea textului pentru solicitare
         if len(solicitare) > 1000:
-            print("Eroare: Textul solicitării este prea lung (maxim 1000 caractere)")
+            logging.warning("Textul solicitării este prea lung (maxim 1000 caractere)")
             return False
             
         # Formatăm datele pentru SQL Server
@@ -320,21 +322,22 @@ def adauga_interventie(data_interventie, zi, solicitant, solicitare, ora, durata
         
         query = """
             INSERT INTO RegistruInterventii 
-            (DataInterventie, Zi, Solicitant, Solicitare, Ora, DurataInterventie, PersonalITC, Observatii, ServiciuID, Status)
-            VALUES 
-            (CONVERT(DATE, ?), ?, ?, ?, CONVERT(TIME, ?), ?, ?, ?, ?, 'In Asteptare')
+            (DataInterventie, Zi, Solicitant, Solicitare, Ora, 
+            DurataInterventie, PersonalITC, Observatii, ServiciuID, Status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         
         params = (
-            data_sql,           # DataInterventie (date)
-            zi,                 # Zi (varchar)
-            solicitant,         # Solicitant (varchar)
-            solicitare,         # Solicitare (varchar)
-            ora_sql,           # Ora (time)
-            durata_sql,        # DurataInterventie (int)
-            personal_itc,       # PersonalITC (varchar)
-            observatii_sql,     # Observatii (varchar, nullable)
-            serviciu_id_sql     # ServiciuID (int)
+            data_sql,           # DataInterventie
+            zi,                 # Zi
+            solicitant,         # Solicitant
+            solicitare,         # Solicitare
+            ora_sql,           # Ora
+            durata_sql,        # DurataInterventie
+            personal_itc,       # PersonalITC
+            observatii_sql,     # Observatii
+            serviciu_id_sql,    # ServiciuID
+            'In Asteptare'      # Status initial
         )
         
         cursor.execute(query, params)
@@ -342,7 +345,7 @@ def adauga_interventie(data_interventie, zi, solicitant, solicitare, ora, durata
         return True
         
     except Exception as e:
-        print(f"Eroare la adăugarea intervenției: {str(e)}")
+        logging.error(f"Eroare la adăugarea intervenției: {str(e)}")
         return False
     finally:
         if 'cursor' in locals():
@@ -365,7 +368,7 @@ def get_servicii():
         return {row.Nume: row.ID for row in cursor.fetchall()}
         
     except Exception as e:
-        print(f"Eroare la obținerea serviciilor: {str(e)}")
+        logging.error(f"Eroare la obținerea serviciilor: {str(e)}")
         return {}
     finally:
         if 'cursor' in locals():
@@ -378,7 +381,7 @@ def is_sef_birou(username):
     try:
         conn = get_db_connection()
         if not conn:
-            print("DEBUG: Nu s-a putut obține conexiunea în is_sef_birou")
+            logging.warning("Nu s-a putut obține conexiunea în is_sef_birou")
             return False
         
         cursor = conn.cursor()
@@ -390,19 +393,19 @@ def is_sef_birou(username):
             WHERE NumeUtilizator = ?
         """
         
-        print(f"DEBUG: Verificare rol șef pentru utilizatorul {normalized_username}")
+        logging.info(f"Verificare rol șef pentru utilizatorul {normalized_username}")
         cursor.execute(query, (normalized_username,))
         result = cursor.fetchone()
         
         if result and result[0] == 1:
-            print(f"DEBUG: Utilizatorul {normalized_username} ESTE șef de birou")
+            logging.info(f"Utilizatorul {normalized_username} ESTE șef de birou")
             return True
         else:
-            print(f"DEBUG: Utilizatorul {normalized_username} NU este șef de birou")
+            logging.info(f"Utilizatorul {normalized_username} NU este șef de birou")
             return False
         
     except Exception as e:
-        print(f"Eroare la verificarea rolului: {str(e)}")
+        logging.error(f"Eroare la verificarea rolului: {str(e)}")
         return False
     finally:
         if cursor:
@@ -415,14 +418,14 @@ def aproba_interventie(nr_crt, approved_by, action='Aprobat'):
     try:
         conn = get_db_connection()
         if not conn:
-            print("DEBUG: Nu s-a putut realiza conexiunea la baza de date")
+            logging.error("Nu s-a putut realiza conexiunea la baza de date")
             return False
         
         cursor = conn.cursor()
-        print(f"\nDEBUG: === Aprobare intervenție ===")
-        print(f"DEBUG: Nr. crt: {nr_crt}")
-        print(f"DEBUG: Aprobat de: {approved_by}")
-        print(f"DEBUG: Acțiune: {action}")
+        logging.info("\n=== Aprobare intervenție ===")
+        logging.info(f"Nr. crt: {nr_crt}")
+        logging.info(f"Aprobat de: {approved_by}")
+        logging.info(f"Acțiune: {action}")
         
         # Facem update direct în baza de date
         query = """
@@ -437,25 +440,25 @@ def aproba_interventie(nr_crt, approved_by, action='Aprobat'):
         
         # Verificăm câte rânduri au fost afectate
         rows_affected = cursor.rowcount
-        print(f"DEBUG: Rânduri afectate: {rows_affected}")
+        logging.info(f"Rânduri afectate: {rows_affected}")
         
         if rows_affected > 0:
             conn.commit()
-            print("DEBUG: Tranzacție finalizată cu succes")
+            logging.info("Tranzacție finalizată cu succes")
             return True
             
-        print("DEBUG: Nu s-a găsit intervenția pentru actualizare")
+        logging.info("Nu s-a găsit intervenția pentru actualizare")
         return False
         
     except Exception as e:
-        print(f"DEBUG: Eroare la procesarea intervenției: {str(e)}")
+        logging.error(f"Eroare la procesarea intervenției: {str(e)}")
         return False
     finally:
         if 'cursor' in locals():
             cursor.close()
         if 'conn' in locals():
             conn.close()
-            print("DEBUG: Conexiune închisă")
+            logging.info("Conexiune închisă")
 
 def sterge_toate_interventiile():
     """Șterge toate intervențiile din baza de date."""
@@ -472,7 +475,7 @@ def sterge_toate_interventiile():
         return True
         
     except Exception as e:
-        print(f"Eroare la ștergerea intervențiilor: {str(e)}")
+        logging.error(f"Eroare la ștergerea intervențiilor: {str(e)}")
         return False
     finally:
         if 'cursor' in locals():
@@ -526,14 +529,14 @@ def import_interventii_csv(file_path):
                 cursor.execute(query, params)
                 
             except Exception as e:
-                print(f"Eroare la importul rândului: {str(e)}")
+                logging.error(f"Eroare la importul rândului: {str(e)}")
                 continue
         
         conn.commit()
         return True
         
     except Exception as e:
-        print(f"Eroare la importul din CSV: {str(e)}")
+        logging.error(f"Eroare la importul din CSV: {str(e)}")
         return False
     finally:
         if 'cursor' in locals():
@@ -572,15 +575,15 @@ def reorder_nrcrt():
         """)
         
         conn.commit()
-        print("NrCrt a fost reordonat cu succes!")
+        logging.info("NrCrt a fost reordonat cu succes!")
         
         # Verificăm rezultatul
         cursor.execute("SELECT MIN(NrCrt) as Min, MAX(NrCrt) as Max, COUNT(*) as Total FROM RegistruInterventii")
         result = cursor.fetchone()
-        print(f"Verificare: Min={result[0]}, Max={result[1]}, Total={result[2]}")
+        logging.info(f"Verificare: Min={result[0]}, Max={result[1]}, Total={result[2]}")
         
     except Exception as e:
-        print(f"Eroare la reordonarea NrCrt: {str(e)}")
+        logging.error(f"Eroare la reordonarea NrCrt: {str(e)}")
         conn.rollback()
     finally:
         cursor.close()
@@ -610,7 +613,7 @@ def add_user(username, password, serviciu_id):
         
         # Formatăm username-ul în formatul corect
         formatted_username = format_username(username)
-        print(f"DEBUG: Formatting username from {username} to {formatted_username}")
+        logging.info(f"Formatăm username-ul din {username} în {formatted_username}")
         
         # Verificăm dacă username-ul există deja
         cursor.execute("SELECT COUNT(*) FROM Utilizatori WHERE NumeUtilizator = ?", (formatted_username,))
@@ -627,13 +630,74 @@ def add_user(username, password, serviciu_id):
         """, (formatted_username, hashed_password, serviciu_id))
         
         conn.commit()
-        print(f"DEBUG: Added new user {formatted_username} with service ID {serviciu_id}")
+        logging.info(f"Am adăugat un utilizator nou {formatted_username} cu ID-ul serviciului {serviciu_id}")
         
         return True, "Utilizator adăugat cu succes"
         
     except Exception as e:
-        print(f"Eroare la adăugarea utilizatorului: {str(e)}")
+        logging.error(f"Eroare la adăugarea utilizatorului: {str(e)}")
         return False, f"Eroare la adăugarea utilizatorului: {str(e)}"
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+def get_personal_it():
+    """Obține lista personalului IT din baza de date."""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            logging.error("Nu s-a putut obține conexiunea la baza de date")
+            return []
+        
+        cursor = conn.cursor()
+        query = """
+            SELECT NumeUtilizator
+            FROM Utilizatori
+            WHERE ServiciuID = (SELECT ID FROM Servicii WHERE Nume = 'IT')
+            ORDER BY NumeUtilizator
+        """
+        
+        cursor.execute(query)
+        personal_it = [row[0] for row in cursor.fetchall()]
+        
+        logging.info(f"Lista personal IT obținută din baza de date: {personal_it}")
+        return personal_it
+        
+    except Exception as e:
+        logging.error(f"Eroare la obținerea listei personalului IT: {str(e)}")
+        return []
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+def is_it_personal(username):
+    """Verifică dacă utilizatorul face parte din serviciul IT."""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            logging.error("Nu s-a putut obține conexiunea la baza de date")
+            return False
+        
+        cursor = conn.cursor()
+        query = """
+            SELECT COUNT(*)
+            FROM Utilizatori u
+            JOIN Servicii s ON u.ServiciuID = s.ID
+            WHERE u.NumeUtilizator = ? AND s.Nume = 'IT'
+        """
+        
+        cursor.execute(query, normalize_username(username))
+        count = cursor.fetchone()[0]
+        
+        return count > 0
+        
+    except Exception as e:
+        logging.error(f"Eroare la verificarea serviciului IT pentru {username}: {str(e)}")
+        return False
     finally:
         if 'cursor' in locals():
             cursor.close()

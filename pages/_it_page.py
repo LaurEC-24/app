@@ -1,24 +1,30 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
-from database import get_interventii, adauga_interventie, is_sef_birou, aproba_interventie
+from database import (
+    get_interventii, 
+    adauga_interventie, 
+    is_sef_birou,
+    is_it_personal, 
+    aproba_interventie,
+    get_personal_it,
+    normalize_username
+)
 
 # Lista personal IT
-PERSONAL_IT = [
-    'constantin.dragomir',
-    'corina.cervinschi',
-    'virgil.ionita',
-    'andrei.barbu',
-    'valentin.ene',
-    'gabriel.mertea',
-    'valentin.dinu',
-    'laurentiu.henegariu'
-]
+PERSONAL_IT = get_personal_it()
 
 def show_interventii_page():
     # Verificăm dacă utilizatorul este autentificat
     if 'authentication_status' not in st.session_state or not st.session_state['authentication_status']:
         st.warning("Trebuie să te autentifici pentru a accesa această pagină.")
+        st.stop()
+        return
+
+    # Verificăm dacă utilizatorul face parte din serviciul IT
+    current_user = st.session_state.get('username', '')
+    if not is_it_personal(current_user):
+        st.error("Acces interzis! Doar personalul IT poate accesa această pagină.")
         st.stop()
         return
 
@@ -29,55 +35,73 @@ def show_interventii_page():
     <style>
         /* Stiluri pentru formularul de intervenție */
         div[data-testid="stForm"] {
-            background-color: #f8f9fa;
-            padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 2rem;
-            max-width: 1200px !important;
+            background-color: #0e1117;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            margin-bottom: 1.5rem;
+            max-width: 800px !important;
             margin-left: auto;
             margin-right: auto;
         }
         
         /* Stiluri pentru câmpurile de input */
         div.row-widget.stTextInput > div > div > input {
-            min-height: 45px;
-            font-size: 16px;
+            background-color: #262730;
+            border: 1px solid #464855;
+            border-radius: 4px;
+            padding: 0.5rem;
+            font-size: 14px;
+            width: 100%;
+            color: white;
         }
         
         /* Stiluri pentru textarea */
         div.row-widget.stTextArea > div > div > textarea {
+            background-color: #262730;
+            border: 1px solid #464855;
+            border-radius: 4px;
+            padding: 0.5rem;
+            font-size: 14px;
             min-height: 100px !important;
-            font-size: 16px;
+            color: white;
         }
         
         /* Stiluri pentru butonul de submit */
         div[data-testid="stForm"] button[type="submit"] {
-            width: 300px;
-            height: 46px;
-            margin: 0 auto;
+            width: 200px;
+            margin: 1rem auto;
             display: block;
-            font-size: 16px;
         }
 
         /* Ajustare pentru containerul principal */
         .block-container {
-            max-width: 1400px;
-            padding-left: 5rem;
-            padding-right: 5rem;
+            max-width: 1200px;
+            padding-left: 2rem;
+            padding-right: 2rem;
         }
 
-        /* Stiluri pentru butonul de anulare */
-        .stButton button {
-            width: 100%;
-            margin-top: 1rem;
+        /* Stiluri pentru selectbox */
+        div.row-widget.stSelectbox > div > div {
+            background-color: #262730;
+            border: 1px solid #464855;
+            border-radius: 4px;
+            color: white;
         }
         
-        /* Stilizare pentru butoanele de number input */
-        .stNumberInput button {
-            width: 3rem !important;
-            height: 2rem !important;
-            font-size: 1.2rem !important;
+        /* Stiluri pentru number input */
+        div.row-widget.stNumberInput > div > div > input {
+            background-color: #262730;
+            border: 1px solid #464855;
+            border-radius: 4px;
+            padding: 0.5rem;
+            font-size: 14px;
+            color: white;
+        }
+        
+        /* Stiluri pentru etichete */
+        label {
+            color: #fafafa;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -144,11 +168,25 @@ def show_interventii_page():
                     key="solicitant_interventie"
                 )
             with col2:
-                # Setăm valoarea implicită în funcție de utilizatorul conectat
-                default_index = PERSONAL_IT.index(st.session_state['username']) if st.session_state['username'] in PERSONAL_IT else 0
+                # Obținem lista personalului IT din baza de date
+                personal_it_list = get_personal_it()
+                if not personal_it_list:
+                    st.error("Nu s-a putut obține lista personalului IT")
+                    return
+                
+                # Obținem username-ul normalizat al utilizatorului curent
+                current_user = st.session_state.get('username', '')
+                normalized_user = normalize_username(current_user)
+                
+                # Găsim indexul utilizatorului curent în lista
+                try:
+                    default_index = personal_it_list.index(normalized_user)
+                except ValueError:
+                    default_index = 0
+                    
                 personal = st.selectbox(
                     "👨‍💻 Personal ITC",
-                    options=PERSONAL_IT,
+                    options=personal_it_list,
                     index=default_index,
                     key="personal_interventie"
                 )
@@ -319,11 +357,12 @@ def show_interventii_page():
             
             with col1:
                 # Filtru pentru Personal IT
-                personal_it_options = ['Toate'] + PERSONAL_IT
+                personal_it_options = ["Toți"] + get_personal_it()
                 personal_filter = st.selectbox(
-                    "Personal IT",
+                    "Filtrare după Personal ITC",
                     options=personal_it_options,
-                    index=0  # Setăm mereu 'Toate' ca opțiune implicită
+                    index=0,
+                    key="personal_filter"
                 )
             
             with col2:
@@ -341,7 +380,7 @@ def show_interventii_page():
             
             # Aplicăm filtrele
             # 1. Filtru personal IT
-            if personal_filter != 'Toate':
+            if personal_filter != 'Toți':
                 df = df[df['Personal IT'] == personal_filter]
             
             # 2. Filtru dată

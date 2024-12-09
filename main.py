@@ -6,58 +6,38 @@ from pages._it_page import show_interventii_page
 from security_config import SESSION_TIMEOUT, MAX_LOGIN_ATTEMPTS, LOGIN_COOLDOWN, sanitize_input
 from datetime import datetime, timedelta
 import os
+import uuid
+import base64
+import json
 
-# Configurare pagină - TREBUIE să fie primul apel Streamlit
+# Configurare pagină
 st.set_page_config(
-    page_title="Aplicație Intervenții",
-    page_icon="🔧",
+    page_title="AppElcen - Registru Intervenții IT",
+    page_icon="💻",
     layout="wide",
-    initial_sidebar_state="collapsed",
-    menu_items=None
+    initial_sidebar_state="collapsed"
 )
 
-# CSS pentru a ascunde complet meniul și a stiliza pagina de login
+# Adăugăm CSS personalizat pentru câmpurile de login
 st.markdown("""
-<style>
-    #MainMenu {visibility: hidden;}
-    .stDeployButton {display:none;}
-    footer {visibility: hidden;}
-    [data-testid="collapsedControl"] {display: none;}
+    <style>
+    /* Stilizare pentru câmpurile de login */
+    div[data-testid="stTextInput"] {
+        max-width: 400px;
+        margin: 0 auto;
+    }
     
-    /* Stiluri pentru pagina de login */
+    /* Stilizare pentru butonul de login */
     div[data-testid="stForm"] {
         max-width: 400px;
         margin: 0 auto;
-        padding: 20px;
-        background-color: transparent !important;
-        border: none !important;
     }
     
-    /* Stiluri pentru câmpurile de input */
-    div[data-testid="stTextInput"] input {
-        max-width: 300px;
-        background-color: rgba(255, 255, 255, 0.1);
-        border: 1px solid rgba(49, 51, 63, 0.2);
-    }
-    
-    /* Stiluri pentru butonul de login */
-    .stButton button {
-        width: 150px;
-        margin: 0 auto;
-        display: block;
-    }
-    
-    /* Centrare titlu */
-    .css-10trblm {
+    /* Centrare text pentru titlu */
+    h1 {
         text-align: center;
     }
-    
-    /* Spațiere pentru subheader */
-    .css-17lntkn {
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-</style>
+    </style>
 """, unsafe_allow_html=True)
 
 # Creăm directorul pentru loguri dacă nu există
@@ -81,79 +61,110 @@ formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 console_handler.setFormatter(formatter)
 logging.getLogger('').addHandler(console_handler)
 
-# Inițializare cookie manager ca variabilă globală
-if 'cookie_manager' not in st.session_state:
-    st.session_state.cookie_manager = stx.CookieManager()
+def encode_session_data(data):
+    """Encodează datele sesiunii pentru URL."""
+    json_str = json.dumps(data)
+    return base64.urlsafe_b64encode(json_str.encode()).decode()
 
-def get_manager():
-    """Returnează instanța existentă de CookieManager."""
-    return st.session_state.cookie_manager
+def decode_session_data(encoded_data):
+    """Decodează datele sesiunii din URL."""
+    try:
+        json_str = base64.urlsafe_b64decode(encoded_data.encode()).decode()
+        return json.loads(json_str)
+    except:
+        return None
+
+def save_session_to_params(username, persistent=False):
+    """Salvează sesiunea în URL parameters."""
+    print(f"\nDEBUG: === Salvare sesiune pentru {username} ===")
+    session_id = str(uuid.uuid4())
+    login_time = datetime.now()
+    
+    # Creăm datele sesiunii
+    session_data = {
+        'username': username,
+        'session_id': session_id,
+        'login_time': login_time.isoformat(),
+        'persistent': persistent
+    }
+    
+    # Encodăm datele pentru URL
+    encoded_data = encode_session_data(session_data)
+    
+    # Salvăm în query params
+    st.query_params["session"] = encoded_data
+    
+    # Actualizăm session state
+    st.session_state['session_id'] = session_id
+    st.session_state['login_time'] = login_time
+    st.session_state['persistent_auth'] = persistent
+    print(f"DEBUG: Sesiune salvată în params: {session_data}")
 
 def init_session_state():
     """Inițializează variabilele de sesiune."""
-    # Încercăm să recuperăm datele din cookie
-    saved_auth_data = get_manager().get('auth_data')
+    print("\nDEBUG: === Inițializare sesiune ===")
     
-    logging.info(f"Recuperare cookie-uri: auth_data={saved_auth_data}")
+    # Încercăm să restaurăm sesiunea din query params
+    encoded_session = st.query_params.get("session", None)
     
-    if saved_auth_data and isinstance(saved_auth_data, dict) and 'username' in saved_auth_data:
-        # Verificăm credențialele din nou
-        username = saved_auth_data['username']
-        result = verify_credentials(username, None)
+    if encoded_session:
+        session_data = decode_session_data(encoded_session)
+        print(f"DEBUG: Sesiune găsită în params: {session_data}")
         
-        if result['success']:
-            logging.info("Credențiale verificate cu succes, restaurăm sesiunea")
-            st.session_state['authentication_status'] = True
-            st.session_state['username'] = username
-            st.session_state['service'] = get_user_service(username)
-            st.session_state['login_time'] = datetime.now()
-        else:
-            logging.warning("Credențiale invalide în cookie, ștergem sesiunea")
-            cookie_manager = get_manager()
-            cookie_manager.delete('auth_data')
-            st.session_state['authentication_status'] = False
-            st.session_state['username'] = None
-            st.session_state['service'] = None
-            st.session_state['login_time'] = None
-    else:
-        logging.info("Nu s-au găsit cookie-uri valide, inițializăm sesiune nouă")
-        if 'authentication_status' not in st.session_state:
-            st.session_state['authentication_status'] = False
-        if 'username' not in st.session_state:
-            st.session_state['username'] = None
-        if 'service' not in st.session_state:
-            st.session_state['service'] = None
-        if 'login_time' not in st.session_state:
-            st.session_state['login_time'] = None
-    
+        if session_data:
+            username = session_data.get('username')
+            session_id = session_data.get('session_id')
+            login_time_str = session_data.get('login_time')
+            is_persistent = session_data.get('persistent', False)
+            
+            try:
+                login_time = datetime.fromisoformat(login_time_str) if login_time_str else datetime.now()
+                
+                # Verificăm dacă sesiunea este validă
+                if username and session_id:
+                    # Pentru sesiuni persistente, folosim un timeout mai lung
+                    timeout = SESSION_TIMEOUT * 3 if is_persistent else SESSION_TIMEOUT
+                    time_passed = datetime.now() - login_time
+                    
+                    print(f"DEBUG: Timp trecut: {time_passed}, Timeout: {timeout}")
+                    
+                    if time_passed <= timeout:
+                        # Restaurăm sesiunea
+                        st.session_state['authentication_status'] = True
+                        st.session_state['username'] = username
+                        st.session_state['service'] = get_user_service(username)
+                        st.session_state['login_time'] = login_time
+                        st.session_state['session_id'] = session_id
+                        st.session_state['persistent_auth'] = is_persistent
+                        print(f"DEBUG: Sesiune restaurată cu succes pentru {username}")
+                        return
+                    else:
+                        print("DEBUG: Sesiune expirată")
+                        st.query_params.clear()
+            except Exception as e:
+                print(f"DEBUG: Eroare la restaurarea sesiunii: {str(e)}")
+                st.query_params.clear()
+
+    print("DEBUG: Inițializare sesiune nouă")
+    # Inițializăm o sesiune nouă
+    if 'authentication_status' not in st.session_state:
+        st.session_state['authentication_status'] = False
+    if 'username' not in st.session_state:
+        st.session_state['username'] = None
+    if 'service' not in st.session_state:
+        st.session_state['service'] = None
+    if 'login_time' not in st.session_state:
+        st.session_state['login_time'] = None
+    if 'session_id' not in st.session_state:
+        st.session_state['session_id'] = None
     if 'login_attempts' not in st.session_state:
         st.session_state['login_attempts'] = 0
     if 'last_attempt_time' not in st.session_state:
         st.session_state['last_attempt_time'] = None
     if 'show_add_form' not in st.session_state:
         st.session_state['show_add_form'] = False
-
-def check_session_timeout():
-    """Verifică dacă sesiunea a expirat"""
-    # Dacă nu suntem autentificați, nu facem nimic
-    if not st.session_state['authentication_status']:
-        return
-
-    # Verificăm dacă avem un timp de login setat
-    if not st.session_state['login_time']:
-        return
-    
-    # Calculăm timpul trecut de la ultima autentificare
-    time_passed = datetime.now() - st.session_state['login_time']
-    
-    # Dacă timpul depășește SESSION_TIMEOUT, deconectăm utilizatorul
-    if time_passed > SESSION_TIMEOUT:
-        st.session_state['authentication_status'] = False
-        st.session_state['username'] = None
-        st.session_state['service'] = None
-        st.session_state['login_time'] = None
-        st.warning('Sesiunea a expirat. Te rog să te reconectezi.')
-        st.rerun()
+    if 'persistent_auth' not in st.session_state:
+        st.session_state['persistent_auth'] = False
 
 def show_login_page():
     """Afișează pagina de login"""
@@ -161,11 +172,10 @@ def show_login_page():
         col1, col2 = st.sidebar.columns([3, 1])
         col1.write(f"👤 {st.session_state['username']}")
         if col2.button("Deconectare", key='logout'):
-            # Ștergem cookie-urile la delogare
-            cookie_manager = get_manager()
-            cookie_manager.delete('auth_data')
-            logging.info("Cookie-uri șterse la delogare")
-            for key in st.session_state.keys():
+            # Ștergem query params
+            st.query_params.clear()
+            # Ștergem toate variabilele din sesiune
+            for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
         return True
@@ -182,6 +192,7 @@ def show_login_page():
     with st.form("login_form", clear_on_submit=False):
         username = sanitize_input(st.text_input("👤 Utilizator", key='username_input'))
         password = st.text_input("🔑 Parolă", type="password", key='password_input')
+        remember_me = st.checkbox("Ține-mă minte", value=False, help="Păstrează-mă conectat pentru 24 de ore")
         submitted = st.form_submit_button("Conectare", use_container_width=True)
 
         if submitted and username and password:
@@ -189,24 +200,13 @@ def show_login_page():
             
             result = verify_credentials(username, password)
             if result['success']:
-                # Setăm cookie-urile pentru sesiune persistentă
-                cookie_manager = get_manager()
-                expiry = datetime.now() + timedelta(days=1)
-                
-                # Setăm ambele cookie-uri într-un singur apel
-                cookie_data = {
-                    'username': username,
-                    'auth_status': 'true'
-                }
-                cookie_manager.set('auth_data', cookie_data, expires_at=expiry)
-                
-                logging.info(f"Cookie-uri setate pentru {username} cu expirare la {expiry}")
-                
                 st.session_state['authentication_status'] = True
                 st.session_state['username'] = username
                 st.session_state['service'] = get_user_service(username)
-                st.session_state['login_time'] = datetime.now()
-                st.session_state['login_attempts'] = 0
+                
+                # Salvăm sesiunea în params
+                save_session_to_params(username, persistent=remember_me)
+                
                 logging.info(f"Autentificare reușită pentru utilizatorul {username}")
                 st.rerun()
             else:
@@ -216,6 +216,36 @@ def show_login_page():
                 if st.session_state['login_attempts'] >= MAX_LOGIN_ATTEMPTS:
                     st.error(f"Ați depășit numărul maxim de încercări. Contul va fi blocat pentru {LOGIN_COOLDOWN.seconds//60} minute.")
     return False
+
+def check_session_timeout():
+    """Verifică dacă sesiunea a expirat"""
+    if not st.session_state['authentication_status']:
+        return
+
+    if not st.session_state['login_time']:
+        return
+    
+    # Calculăm timpul trecut de la ultima autentificare
+    time_passed = datetime.now() - st.session_state['login_time']
+    
+    # Folosim un timeout mai lung pentru sesiuni persistente
+    timeout = SESSION_TIMEOUT * 3 if st.session_state.get('persistent_auth') else SESSION_TIMEOUT
+    
+    # Dacă timpul depășește timeout-ul, deconectăm utilizatorul
+    if time_passed > timeout:
+        # Ștergem query params
+        st.query_params.clear()
+        
+        # Resetăm starea sesiunii
+        st.session_state['authentication_status'] = False
+        st.session_state['username'] = None
+        st.session_state['service'] = None
+        st.session_state['login_time'] = None
+        st.session_state['session_id'] = None
+        st.session_state['persistent_auth'] = False
+        
+        st.warning('Sesiunea a expirat. Te rog să te reconectezi.')
+        st.rerun()
 
 def main():
     """Funcția principală a aplicației."""
